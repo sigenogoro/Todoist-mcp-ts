@@ -1,62 +1,80 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
+#!/usr/bin/env node
 
-// MCPサーバーの作成
-const server = new McpServer({
-  name: "todoist-mcp-server",
-  version: "1.0.0"
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+
+
+// MCPサーバーの初期化
+const server = new Server(
+  {
+    name: 'todoist-mcp-server',
+    version: '1.0.0',
+  },
+  {
+    // Claude Desktop に表示される機能名
+    capabilities: {
+      tools: {},
+    },
+  }
+);
+
+// 利用できるツール一覧を返す
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      {
+        // ツールの名前
+        name: 'add_task',
+        // ツールの説明
+        description: 'Add a new task to Todoist',
+        // 入力スキーマ（AIに対して出力して欲しいフォーマット）
+        inputSchema: {
+          type: 'object',
+          properties: {
+            content: {
+              type: 'string',
+              description: 'Task content/title',
+            },
+          },
+          // 必ず入れて欲しいフィールド
+          required: ['content'],
+        },
+      },
+    ],
+  };
 });
 
-// 簡単なテスト用ツールを追加
-server.tool(
-  "say_hello",
-  "指定された人に挨拶メッセージを生成します。名前を受け取って挨拶文を返します。",
-  {
-    name: z.string().describe("挨拶する相手の名前（例：田中、佐藤、山田など）")
-  },
-  async ({ name }) => {
-    console.error(`say_hello called with name: ${name}`); // デバッグ用
+// ツール実行を処理
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // 実行したいツール名
+  const { name, arguments: args } = request.params;
+  // ツール名が `add_task` の場合の処理
+  if (name === 'add_task') {
+    const { content } = args as { content: string };
+    
+    // MCPサーバーからClaude Desktopへの実行結果報告である
     return {
       content: [
         {
-          type: "text",
-          text: `こんにちは、${name}さん! Todoist MCPサーバーから挨拶します。`
-        }
-      ]
+          type: 'text',
+          text: `Task "${content}" would be added to Todoist`,
+        },
+      ],
     };
   }
-);
 
-// Todoistタスク一覧取得ツール（モック版）
-server.tool(
-  "get_tasks",
-  "Todoistのタスク一覧を取得",
-  {},
-  async () => {
-    // 実際のTodoist APIを使う前のテスト用モックデータ
-    return {
-      content: [
-        {
-          type: "text",
-          text: "タスク一覧:\n1. MCPサーバーの実装\n2. Claude Desktopとの連携テスト\n3. Todoist API の実装"
-        }
-      ]
-    };
-  }
-);
+  throw new Error(`Unknown tool: ${name}`);
+});
 
-// サーバーの起動
+// サーバー起動
 async function main() {
-  console.error('Todoist MCPサーバーを起動中...');
-  
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  
-  console.error('Todoist MCPサーバーが起動しました');
+  console.error('Todoist MCP server running on stdio');
 }
 
-main().catch((error) => {
-  console.error('サーバー起動エラー:', error);
-  process.exit(1);
-});
+main().catch(console.error);
