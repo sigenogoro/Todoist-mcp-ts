@@ -89,13 +89,15 @@ server.registerTool(
       }
       
       // Todoist APIを使ってタスクを登録
-      for (const task of todoistTasks) {
-        await todoistApi.addTask({
-          content: task.name,
-          description: task.description,
-          projectId: projectId
-        });
-      }
+      await Promise.all(
+        todoistTasks.map(task => 
+          todoistApi.addTask({
+            content: task.name,
+            description: task.description,
+            projectId: projectId
+          })
+        )
+      );
 
       // 登録成功後、一時保管配列をクリア
       const taskLength = todoistTasks.length;
@@ -115,6 +117,60 @@ server.registerTool(
           {
             type: "text",
             text: `Todoistへの登録でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+)
+ 
+
+server.registerTool(
+  "delete_all_tasks",
+  {
+    description: "Todoistの全タスクを削除"
+  },
+  async() => {
+    try {
+      // Projectsを取得
+      const projects = (await todoistApi.getProjects()).results;
+      // プロジェクトIDを取得
+      const defaultProject = projects.find(project => project.name === process.env.PROJECT_NAME);
+      const projectId = defaultProject ? defaultProject.id : projects[0]?.id;
+
+      if (!projectId) {
+        throw new Error("利用可能なプロジェクトが見つかりません");
+      }
+
+      // プロジェクト内の全タスク取得
+      const tasks = (await todoistApi.getTasks({ projectId })).results;
+      if (tasks.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "削除するタスクがありません"
+            }
+          ]
+        };
+      }
+      // タスクを削除
+      await Promise.all(tasks.map(task => todoistApi.deleteTask(task.id)));
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Todoistのプロジェクト「${process.env.PROJECT_NAME}」内の全タスクを削除しました`
+          }
+        ]
+      }
+    } catch(error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Todoistの全タスク削除でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`
           }
         ]
       };
